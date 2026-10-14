@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+
+<style>
+html, body {
+    width: 1080px;
+    height: 1920px;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+}
+
+#canvas { position: absolute; top: 0; left: 0; }
+#fx { position: absolute; width: 1080px; height: 1920px; pointer-events: none; }
+
+/* ZOOM MARE INSTAGRAM */
+.big-profile {
+    position: absolute;
+    width: 700px;
+    height: 700px;
+    border-radius: 40px;
+    object-fit: cover;
+    border: 10px solid rgba(255,255,255,0.7);
+    box-shadow: 0 0 40px rgba(255,255,255,0.4);
+    animation: bigProfile 5s ease-out forwards;
+}
+
+@keyframes bigProfile {
+    0% { transform: scale(0.1); opacity: 0; }
+    20% { transform: scale(1.25); opacity: 1; }
+    40% { transform: scale(1.05); opacity: 1; }
+    100% { transform: scale(1); opacity: 0; }
+}
+
+.big-name-inside {
+    position: absolute;
+    bottom: 20px;
+    left: 0;
+    width: 100%;
+    text-align: center;
+    font-weight: 900;
+    color: white;
+    text-shadow: 0 0 15px black;
+    pointer-events: none;
+    font-size: 60px;
+    padding: 0 20px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    transform-origin: center;
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="canvas"></canvas>
+<div id="fx"></div>
+
+<audio id="joinSound" src="join.mp3"></audio>
+<audio id="giftSound" src="gift.mp3"></audio>
+
+<script>
+/* CANVAS FIX 1080×1920 */
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+canvas.width = 1080;
+canvas.height = 1920;
+
+/* LISTE */
+let objects = [];
+let floatingUsers = new Set();
+let activeUsers = new Map();
+let profileCache = {};
+
+const ACTIVE_TIMEOUT = 15000; // 15 secunde
+
+function markActivity(uid) {
+    activeUsers.set(uid, Date.now());
+}
+
+function cleanupInactive() {
+    const now = Date.now();
+    for (const [uid, last] of activeUsers.entries()) {
+        if (now - last > ACTIVE_TIMEOUT) {
+            fadeOutAvatar(uid);
+        }
+    }
+}
+setInterval(cleanupInactive, 2000);
+
+/* FADE OUT */
+function fadeOutAvatar(uid) {
+    const obj = objects.find(o => o.uid === uid);
+    if (!obj) return;
+
+    obj.fade = 1;
+    obj.fading = true;
+
+    setTimeout(() => {
+        objects = objects.filter(o => o.uid !== uid);
+        floatingUsers.delete(uid);
+        activeUsers.delete(uid);
+    }, 800);
+}
+
+/* ÎNCĂRCARE POZE */
+function loadProfile(url, callback) {
+    if (!url) return;
+    if (profileCache[url]) return callback(profileCache[url]);
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+        profileCache[url] = img;
+        callback(img);
+    };
+    img.src = url;
+}
+
+/* SPAWN AVATAR STATIC */
+function spawnFloatingAvatar(url, uid) {
+    if (!url || !uid) return;
+
+    markActivity(uid);
+
+    floatingUsers.delete(uid); // permite reapariția în alt loc
+
+    loadProfile(url, (img) => {
+        const neonColor = `hsl(${Math.random()*360}, 100%, 70%)`;
+
+        objects.push({
+            uid: uid,
+            img: img,
+            neon: neonColor,
+            x: Math.random() * 1080,
+            y: Math.random() * 1920,
+            size: 220,
+            fade: 1,
+            fading: false
+        });
+    });
+}
+
+/* DESEN AVATAR INSTAGRAM */
+function drawSquareImage(ctx, o) {
+    const { img, x, y, size, neon, fade } = o;
+
+    ctx.save();
+    ctx.globalAlpha = fade;
+
+    const glow = 4 + Math.sin(Date.now() / 400) * 2;
+
+    ctx.strokeStyle = neon;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.roundRect(x - size/2 - glow, y - size/2 - glow, size + glow*2, size + glow*2, 30);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.roundRect(x - size/2, y - size/2, size, size, 30);
+    ctx.clip();
+    ctx.drawImage(img, x - size/2, y - size/2, size, size);
+
+    ctx.restore();
+}
+
+/* LOOP FPS 24 */
+let lastFrame = 0;
+const fpsInterval = 1000 / 24;
+
+function loop(ts) {
+    if (ts - lastFrame < fpsInterval) {
+        requestAnimationFrame(loop);
+        return;
+    }
+    lastFrame = ts;
+
+    ctx.clearRect(0, 0, 1080, 1920);
+
+    for (const o of objects) {
+        if (o.fading) o.fade -= 0.05;
+        drawSquareImage(ctx, o);
+    }
+
+    requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ZOOM MARE INSTAGRAM */
+function spawnBigProfile(url, username) {
+    if (!url) return;
+
+    const fx = document.getElementById("fx");
+
+    const wrapper = document.createElement("div");
+    wrapper.style.position = "absolute";
+
+    wrapper.style.left = (canvas.width / 2 - 350) + "px";
+    wrapper.style.top = (canvas.height / 2 - 350) + "px";
+
+    wrapper.style.width = "700px";
+    wrapper.style.height = "700px";
+    wrapper.style.pointerEvents = "none";
+    wrapper.style.animation = "bigProfile 5s ease-out forwards";
+
+    const img = document.createElement("img");
+    img.src = url;
+    img.className = "big-profile";
+
+    const name = document.createElement("div");
+    name.className = "big-name-inside";
+    name.innerText = username;
+
+    wrapper.appendChild(img);
+    wrapper.appendChild(name);
+    fx.appendChild(wrapper);
+
+    setTimeout(() => {
+        const maxWidth = 660;
+        let fontSize = 60;
+
+        while (name.scrollWidth > maxWidth && fontSize > 20) {
+            fontSize -= 2;
+            name.style.fontSize = fontSize + "px";
+        }
+    }, 10);
+
+    setTimeout(() => wrapper.remove(), 5000);
+}
+
+/* WEBSOCKET */
+function getProfileUrl(data) {
+    return data.profilePictureUrl ||
+           data.userDetails?.profilePictureUrls?.[0] ||
+           null;
+}
+
+const ws = new WebSocket("ws://localhost:62024");
+
+ws.onmessage = (event) => {
+    let packet;
+    try { packet = JSON.parse(event.data); } catch(e) { return; }
+
+    const data = packet.data || {};
+    const uid = data.secUid || data.userId || data.uniqueId;
+    const profileUrl = getProfileUrl(data);
+    const username = data.nickname || data.uniqueId || "User";
+
+    if (!uid) return;
+
+    if (packet.event === "member") {
+        document.getElementById("joinSound").play();
+        spawnBigProfile(profileUrl, username);
+        spawnFloatingAvatar(profileUrl, uid);
+        return;
+    }
+
+    if (packet.event === "gift") {
+        document.getElementById("giftSound").play();
+        spawnBigProfile(profileUrl, username);
+        spawnFloatingAvatar(profileUrl, uid);
+        return;
+    }
+
+    if (packet.event === "chat") {
+        spawnFloatingAvatar(profileUrl, uid);
+        return;
+    }
+
+    if (packet.event === "like") {
+        spawnFloatingAvatar(profileUrl, uid);
+        return;
+    }
+};
+</script>
+
+</body>
+</html>
